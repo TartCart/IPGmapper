@@ -1,6 +1,11 @@
 # IPGmapper
 .exe for providing geolocation data to a list of public IP addresses
 
+Create venv in your repository
+install packages below
+run pyinstaller to create the .exe
+`pyinstaller -F --add-data="GeoLite2-City.mmdb;." -n IPGmapper  .\main.py`
+
 requirements: 
 
 city database file from maxmind - GeoLite2-City.mmdb
