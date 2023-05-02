@@ -5,6 +5,7 @@ requirements:
 
 from pip list 
 to install do pip install %package%
+```
 Package                   Version
 ------------------------- ---------
 aiohttp                   3.8.4
@@ -31,3 +32,4 @@ setuptools                65.5.0
 tqdm                      4.65.0
 urllib3                   1.26.15
 yarl                      1.9.2
+```
