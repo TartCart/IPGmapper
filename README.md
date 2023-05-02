@@ -11,7 +11,7 @@ requirements:
 city database file from maxmind - GeoLite2-City.mmdb
 
 
-from `pip list`, 
+from `pip list`   
 to install do `pip install %package%`
 ```
 Package                   Version
