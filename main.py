@@ -8,7 +8,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 # Program version variable
-version = 1.1
+version = 1.2
 
 # Creating a variable for the executable to be able to see the database filepath and
 # setting variable to the resource path
