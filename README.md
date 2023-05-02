@@ -3,7 +3,7 @@
 
 requirements: 
 
-from pip list 
+from pip list, 
 to install do pip install %package%
 ```
 Package                   Version
