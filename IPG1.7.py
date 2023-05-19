@@ -1,29 +1,32 @@
 import geoip2.database
 import re
+import ipaddress
 import pandas as pd
 import PySimpleGUI as sg
 from os import path
 from datetime import datetime
 from tqdm import tqdm
+import numpy as np
 
 # Program version variable
 version = 1.7
 
 ###### Datafile retrieval to be refreshed from time to time (mainly maxmind data) updated 5/8/2023
 # IP comparison: Geolocation/ASN data - https://www.maxmind.com/en/accounts/860125/geoip/downloads
-# Naughty list VPN data - https://github.com/X4BNet/lists_vpn (output/vpn/ipv4.txt)
-# Naughty list ASN data - https://github.com/brianhama/bad-asn-list
-# Naughty list Tor data - https://check.torproject.org/torbulkexitlist
-# Naughty list threat intelligence data  - https://github.com/stamparm/ipsum
+# Naughty list VPN data
+bad_vpn_url = 'https://raw.githubusercontent.com/X4BNet/lists_vpn/main/ipv4.txt'
+# Naughty list ASN data
+asn_url = 'https://raw.githubusercontent.com/brianhama/bad-asn-list/master/bad-asn-list.csv'
+# Naughty list Tor data
+tor_url = 'https://check.torproject.org/torbulkexitlist'
+# Naughty list threat intelligence data
+ti_url = 'https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt'
 
 # Update the variable absolute paths below with any name changes
 # Creating variables strictly for the executable to be able to see the input absolute filepaths
-geo_db_path = path.abspath(path.join(path.dirname(__file__), 'Databases//GeoLite2-City.mmdb'))
-asn_db_path = path.abspath(path.join(path.dirname(__file__), 'Databases//GeoLite2-ASN.mmdb'))
-bad_asn_path = path.abspath(path.join(path.dirname(__file__), 'Databases//bad-asn-list.csv'))
-bad_vpn_db_path = path.abspath(path.join(path.dirname(__file__), 'Databases//ipv4.txt'))
-bad_tor_db_path = path.abspath(path.join(path.dirname(__file__), 'Databases//torbulkexitlist.txt'))
-image_path = path.abspath(path.join(path.dirname(__file__), 'Images//BL.ico'))
+geo_db_path = path.abspath(path.join(path.dirname(__file__), 'GeoLite2-City.mmdb'))
+asn_db_path = path.abspath(path.join(path.dirname(__file__), 'GeoLite2-ASN.mmdb'))
+image_path = path.abspath(path.join(path.dirname(__file__), 'BL.ico'))
 
 #### Functions
 # Combine the multiple input files and fix encoding issues on extremely large data files
@@ -60,7 +63,7 @@ def clean_input_dfs(input_df):
         for row in input_df[column]:
             cell_value = str(row)
             ip_address = re.findall(ip_pattern, cell_value)
-            ip_addresses.append(ip_address)
+            ip_addresses.extend(ip_address)
 
     # Add the IP list to the new df 
     ip_addresses = list(filter(None, ip_addresses))
@@ -76,47 +79,49 @@ def clean_input_dfs(input_df):
 # Add geolocation data to the DF, cull IP's that are not public by removing
 # the row in the DF if the function hits an error as it means it does not match the public IP db
 def add_geolocation_data(geo_data):
-    
-    unique_ips = len(geo_data)
-    cull_count = 0
     cull_ip_list = []
     country_list = []
     region_list = []
     city_list = []
-    ip_network_address_list = []
     asn_list = []
     system_organization = []
 
-    print("Culling non-public IP's, appending location and organization data...")
-    with tqdm(total=unique_ips) as pbar:
+    print("Culling non-public IPs, appending location, network and organization data...")
+    with tqdm(total=len(geo_data)) as pbar:
         for index, row in geo_data.iterrows():
             try:
                 pbar.update(1)
                 ip = row['IP']
-                with geoip2.database.Reader(geo_db_path) as reader:
-                    response = reader.city(ip)
-                    ip_network_address_list.append(response.traits.network)
-                    country_list.append(response.country.name)
-                    region_list.append(response.subdivisions.most_specific.name)
-                    city_list.append(response.city.name)
-                with geoip2.database.Reader(asn_db_path) as reader:
-                    response = reader.asn(ip)
-                    asn_list.append(response.autonomous_system_number)
-                    system_organization.append(response.autonomous_system_organization)
+                with geoip2.database.Reader(geo_db_path) as geo_reader, \
+                        geoip2.database.Reader(asn_db_path) as asn_reader:
+                    geo_response = geo_reader.city(ip)
+                    asn_response = asn_reader.asn(ip)
+
+                country_list.append(geo_response.country.name)
+                region_list.append(geo_response.subdivisions.most_specific.name)
+                city_list.append(geo_response.city.name)
+                asn_list.append(asn_response.autonomous_system_number)
+                system_organization.append(asn_response.autonomous_system_organization)
+
             except:
                 cull_ip_list.append(index)
-                cull_count += 1
 
-    # Adding generated list data to the df
-    geo_data = geo_data.drop(index = cull_ip_list)
-    final_ip_count = len(geo_data.index)
-    print(f"\nDone... {cull_count:,} IP's culled. {final_ip_count:,} total IP's remaining\n")
-    geo_data['Net Address'] = ip_network_address_list
+    # Removing culled IP rows from the dataframe
+    geo_data = geo_data.drop(index=cull_ip_list)
+    final_ip_count = len(geo_data)
+    print(f"\nDone... {len(cull_ip_list):,} IPs culled. {final_ip_count:,} IPs remaining.\n")
+
+    if final_ip_count == 0:
+        input("Returned 0 public IP's, exit?.")
+        exit()
+
+    # Adding generated list data to the dataframe
     geo_data['Country'] = country_list
     geo_data['Region/state'] = region_list
     geo_data['City'] = city_list
     geo_data['Organization'] = system_organization
     geo_data['ASN'] = asn_list
+
     return geo_data
 
 # Check if IP matches VPN data, turn IP into its network address using geo database function
@@ -124,21 +129,42 @@ def add_geolocation_data(geo_data):
 def add_vpn_data(vpn_data):
     
     # Pull in the bad vpn DB
-    bad_vpn_df = pd.read_csv(bad_vpn_db_path, names=['network.address'])   
+    try:
+        bad_vpn_df = pd.read_csv(bad_vpn_url, engine='python')
+    except:
+        print("Cannot reach VPN data URL, exiting...")
+        exit()
+    
+    # Convert the input df to object for paster processing when passing to the 'match_ip_address' function
+    bad_vpn_df.columns = ['network.address']
+    net_addresses = set(bad_vpn_df['network.address'])
 
-    # Match data
-    vpn_data['VPN DB'] = vpn_data['Net Address'].isin(bad_vpn_df['network.address'])
+
+    vpn_data['VPN DB'] = False  # Initialize the 'VPN DB' column to False
+    print('Finding network address matches against the VPN database...')
+    with tqdm(total=len(vpn_data)) as pbar:
+        for index, row in vpn_data.iterrows():
+            ip_address = row['IP']
+            match_found = any(ipaddress.ip_address(ip_address) in ipaddress.ip_network(network) for network in net_addresses)
+            vpn_data.at[index, 'VPN DB'] = match_found
+            pbar.update(1)
+
     return vpn_data
 
 # Check if IP matches Tor exit point data, basic df to df comparison
-def add_tor_data(tor_data):
+def add_tor_data(tor_data):  #### DOUBLE CHECK TOR DATA MATCH ###
     
-    # Pull in the bad tor DB
-    tor_df = pd.read_csv(bad_tor_db_path, names=['ips'])
+        # Pull in the bad tor DB
+    try:
+        bad_tor_df = pd.read_csv(tor_url, engine='python')
+    except:
+        print("Cannot reach VPN data URL, exiting...")
+        exit()
+
+    bad_tor_df.columns = ['ips']
     
     # Checking if the IP addresses match the Tor IP addresses and assigning True/False for Tor data  
-    tor_data['Tor DB'] = tor_data['IP'].isin(tor_df['ips'])
-
+    tor_data['Tor exit DB'] = tor_data['IP'].isin(bad_tor_df['ips'])
     return tor_data
  
 # Download latest ti feed IP's and match data
@@ -146,7 +172,6 @@ def add_ti_data(ti_data):
 
     # Get the latest threat intelligence IP list, turn it into a df
     try:
-        ti_url = 'https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt'
         ti_df = pd.read_csv(ti_url, sep='delimeiter', header=None, engine='python')
     except:
         print("Cannot reach Threat Intelligence URL, exiting...")
@@ -167,13 +192,26 @@ def add_ti_data(ti_data):
     ti_ip_df_final = ti_ip_df_dropped_empties.reset_index(drop=True)
 
     # Checking if the IP addresses match the TI IP generated df 
-    ti_data['TI DB'] = ti_data['IP'].isin(ti_ip_df_final['ips'])
-
+    ti_data['Threat Intel DB'] = ti_data['IP'].isin(ti_ip_df_final['ips'])
     return ti_data
 
 # Check if ASN data matches bad ASN list
-def check_asn(asn_data):
-    bad_asn_df = pd.read_csv(bad_asn_path, names=['bad_asn_column'])
+def check_asn_data(asn_data):
+
+    # Importing bad asn list and cleaning up df
+    bad_asn_df = pd.read_csv(asn_url, names=['delete'], engine='python')
+    bad_asn_df.reset_index(inplace=True)
+    bad_asn_df.drop(columns=['delete'], inplace=True)
+    bad_asn_df.rename(columns={'index': 'bad.asn'}, inplace=True)
+    bad_asn_df = bad_asn_df.iloc[1:]
+    bad_asn_df['bad.asn'] = bad_asn_df['bad.asn'].astype(int)
+
+    # Matching ASN data to bad ASN and marking T/F, dropping unneeded ASN column after
+    asn_data['ASN DB'] = asn_data['ASN'].isin(bad_asn_df['bad.asn'])
+    asn_data.drop(columns=['ASN'], inplace=True)
+
+    return asn_data
+
 
 # GUI window display and theme color
 print (f"Binary Lab \nIPGmapper Version {version}")
@@ -187,8 +225,8 @@ layout = [
     [sg.Text("Adding multiple files at once is supported along with raw log files that may have additional data other than IP's")],
     [sg.T("")],
     [sg.Text("IPGmapper has added functionality of flagging IP's that match against suspicious addresses for VPNs, Tor exit points,")],
-    [sg.Text("ASN data (datacenters - cloud VM providers) and threat intelligence feeds.")],
-    [sg.Text("*Selecting all checks will drastically slow down processing time for large files*")],
+    [sg.Text("ASN data (cloud, managed hosting, and colocation facilities) and threat intelligence feeds.")],
+    [sg.Text("*Selecting common VPN's check will drastically slow down processing time for large files*")],
     [sg.T("")], 
     [sg.Text("     Select the input .CSV file(s):", size =(26, 1)), sg.Input(), sg.FilesBrowse(key="in1")],
     [sg.Text("     Select the output folder:", size =(26,1)), sg.Input(), sg.FolderBrowse(key="in2")],
@@ -204,7 +242,7 @@ layout = [
           ]
 
 # Set the window name and size, calling the layout data to the window 
-window = sg.Window('IPGmapper', layout, icon = image_path, size=(770,480))
+window = sg.Window('IPGmapper', layout, icon = image_path, size=(770,620))
 
 # Launching the window and setting the input to variables
 event, values = window.read()
@@ -253,13 +291,15 @@ if check_tor == True:
 if check_ti == True:
     add_ti_data(final_df)
 if check_asn == True:
-    check_asn(final_df)
+    check_asn_data(final_df)
+else:
+    final_df.drop(columns=['ASN'], inplace=True)
 
 # Sort the final data and create separate output(names) files if the user chose that option
 final_df.sort_values(by='Country', inplace=True, ascending=True)
 filtered_user_prepend = ''.join([char for char in user_prepend if char.isalpha()])
 if user_prepend != filtered_user_prepend:
-    print('Bad format for user prepended filename.. fixing..\n')
+    print('Bad format for user prepended filename. fixing..')
     user_prepend = filtered_user_prepend
 
 if user_prepend == '':
