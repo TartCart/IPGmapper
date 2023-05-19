@@ -1,5 +1,5 @@
 # IPGmapper
-.exe for providing geolocation data to a list of public IP addresses
+.exe for providing geolocation and other data from raw log IP files written in Python
 
 Create venv in your repository  
 install packages below  
@@ -8,7 +8,7 @@ run pyinstaller to create the .exe
 
 requirements: 
 
-city database file from maxmind - GeoLite2-City.mmdb
+city and ASN database files from maxmind - GeoLite2-City.mmdb - GeoLite2-ASN.mmdb
 
 
 from `pip list`   
