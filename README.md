@@ -4,7 +4,7 @@
 Create venv in your repository  
 install packages below  
 run pyinstaller to create the .exe  
-`pyinstaller -F --add-data="GeoLite2-City.mmdb;." --add-data="GeoLite2-ASN.mmdb;." --add-data="BL.ico;." -n IPGmapper  .\IPG1.7.py`
+`pyinstaller -F --add-data="GeoLite2-City.mmdb;." --add-data="GeoLite2-ASN.mmdb;." --add-data="BL.ico;." -n IPGmapper  .\IPG1.8.py`
 
 requirements: 
 
