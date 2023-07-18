@@ -26,7 +26,6 @@ ti_url = 'https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt'
 # Creating variables strictly for the executable to be able to see the input absolute filepaths
 geo_db_path = path.abspath(path.join(path.dirname(__file__), 'GeoLite2-City.mmdb'))
 asn_db_path = path.abspath(path.join(path.dirname(__file__), 'GeoLite2-ASN.mmdb'))
-image_path = path.abspath(path.join(path.dirname(__file__), 'BL.ico'))
 
 #### Functions
 # Combine the multiple input files and fix encoding issues on extremely large data files
@@ -221,7 +220,6 @@ sg.theme('Darkteal6')
 
 # Configuring the inside of the window (tabs/text/buttons)
 layout = [
-    [sg.Text("For Binary Lab use only.", size =(80,1)), sg.Text(f"Version: {version}")],
     [sg.T("")],
     [sg.Text("IPGmapper by default takes the submmited .CSV files and outputs a file with geolocation data for each IP.")],
     [sg.Text("Adding multiple files at once is supported along with raw log files that may have additional data other than IP's")],
@@ -342,3 +340,5 @@ else:
 # Extro          
 print(f"\nSuccess! The exported .CSV file is located in {output_folder_path}\n")
 input('Exit?')
+
+# TC
